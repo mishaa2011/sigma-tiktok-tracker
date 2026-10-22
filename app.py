@@ -3,6 +3,9 @@ import re
 import hmac
 import hashlib
 import sqlite3
+import json
+from urllib.request import Request as URLRequest, urlopen
+from urllib.parse import urlencode
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
@@ -18,6 +21,8 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.getenv("DATABASE_PATH", os.path.join(APP_DIR, "tracker.db"))
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
+SOURCEVINE_API_KEY = os.getenv("SOURCEVINE_API_KEY", "").strip()
+SOURCEVINE_API_URL = "https://api.sourcevine.io/v1/tiktok/stats"
 TZ = timezone(timedelta(hours=3))
 
 if not ADMIN_PASSWORD:
@@ -122,6 +127,28 @@ def canonicalize(url):
     path = p.path.rstrip("/")
     return f"https://{(p.hostname or '').lower()}{path}"
 
+
+def fetch_tiktok_stats(url: str) -> dict:
+    """Fetch one snapshot of public TikTok video stats from Sourcevine."""
+    query = urlencode({"url": url})
+    req = URLRequest(
+        f"{SOURCEVINE_API_URL}?{query}",
+        headers={"Authorization": f"Bearer {SOURCEVINE_API_KEY}", "Accept": "application/json"},
+        method="GET",
+    )
+    with urlopen(req, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not payload.get("success") or not payload.get("available"):
+        raise ValueError("Sourcevine сообщает, что статистика недоступна")
+    data = payload.get("data") or {}
+    result = {}
+    for key in ("views", "likes", "comments", "shares"):
+        value = data.get(key)
+        if value is None:
+            raise ValueError(f"В ответе Sourcevine отсутствует поле {key}")
+        result[key] = max(0, int(value))
+    return result
+
 def calculate_status(row, cfg):
     if row["views"] is None:
         return "pending"
@@ -159,16 +186,39 @@ def submit(
         return RedirectResponse("/?error=Проверьте%20ники", status_code=303)
     if not valid_tiktok_url(url):
         return RedirectResponse("/?error=Вставьте%20корректную%20ссылку%20на%20видео%20TikTok", status_code=303)
+    if not SOURCEVINE_API_KEY:
+        return RedirectResponse("/?error=Автоматическая%20проверка%20пока%20не%20настроена", status_code=303)
+
     canonical = canonicalize(url)
+    # Получаем статистику ровно один раз при отправке формы. Повторного опроса нет.
+    stats = None
+    stats_error = ""
+    try:
+        stats = fetch_tiktok_stats(url)
+    except Exception as exc:
+        # Не подменяем ошибку нулевыми просмотрами; сохраняем отправку с пометкой ошибки.
+        stats_error = str(exc)[:500]
+
     try:
         with db() as c:
-            c.execute("""INSERT INTO submissions
-                (telegram_nick,tiktok_nick,url,canonical_url,week,submitted_at)
-                VALUES(?,?,?,?,?,?)""",
-                (telegram_nick, tiktok_nick, url, canonical, week_key(), now_local().isoformat()))
+            if stats is not None:
+                c.execute("""INSERT INTO submissions
+                    (telegram_nick,tiktok_nick,url,canonical_url,week,submitted_at,
+                     views,likes,comments,shares,stats_status,notes)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (telegram_nick, tiktok_nick, url, canonical, week_key(), now_local().isoformat(),
+                     stats["views"], stats["likes"], stats["comments"], stats["shares"], "checked", "Sourcevine: однократная проверка"))
+            else:
+                c.execute("""INSERT INTO submissions
+                    (telegram_nick,tiktok_nick,url,canonical_url,week,submitted_at,stats_status,notes)
+                    VALUES(?,?,?,?,?,?,?,?)""",
+                    (telegram_nick, tiktok_nick, url, canonical, week_key(), now_local().isoformat(), "error", "Sourcevine: " + stats_error))
     except sqlite3.IntegrityError:
         return RedirectResponse("/?error=Такая%20ссылка%20уже%20была%20отправлена", status_code=303)
-    return RedirectResponse("/?message=Ссылка%20принята.%20Статистика%20будет%20проверена%20автоматически%20после%20закрытия%20недели", status_code=303)
+
+    if stats is not None:
+        return RedirectResponse("/?message=Ссылка%20принята.%20Статистика%20получена%20и%20сохранена", status_code=303)
+    return RedirectResponse("/?error=Ссылка%20сохранена%2C%20но%20Sourcevine%20не%20вернул%20статистику.%20Проверьте%20результат%20в%20админ-панели", status_code=303)
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin(request: Request, all: int = 0, week: str = "", page: int = 1):
@@ -275,4 +325,4 @@ def admin_set_stats(request: Request, submission_id: int,
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": now_local().isoformat(), "stats_provider": "not_configured"}
+    return {"status": "ok", "time": now_local().isoformat(), "stats_provider": "sourcevine" if SOURCEVINE_API_KEY else "not_configured"}_provider": "not_configured"}
