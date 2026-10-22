@@ -325,4 +325,4 @@ def admin_set_stats(request: Request, submission_id: int,
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": now_local().isoformat(), "stats_provider": "sourcevine" if SOURCEVINE_API_KEY else "not_configured"}_provider": "not_configured"}
+        return {"status": "ok", "time": now_local().isoformat(), "stats_provider": "sourcevine" if SOURCEVINE_API_KEY else "not_configured"}
