@@ -129,24 +129,78 @@ def canonicalize(url):
 
 
 def fetch_tiktok_stats(url: str) -> dict:
-    """Fetch one snapshot of public TikTok video stats from Sourcevine."""
+    """Получает один снимок статистики TikTok через Sourcevine."""
+    if not SOURCEVINE_API_KEY:
+        raise ValueError("Не настроен SOURCEVINE_API_KEY")
+
     query = urlencode({"url": url})
     req = URLRequest(
         f"{SOURCEVINE_API_URL}?{query}",
-        headers={"Authorization": f"Bearer {SOURCEVINE_API_KEY}", "Accept": "application/json"},
+        headers={
+            "Authorization": f"Bearer {SOURCEVINE_API_KEY}",
+            "Accept": "application/json",
+        },
         method="GET",
     )
-    with urlopen(req, timeout=20) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not payload.get("success") or not payload.get("available"):
-        raise ValueError("Sourcevine сообщает, что статистика недоступна")
-    data = payload.get("data") or {}
+
+    try:
+        with urlopen(req, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(
+            f"Ошибка запроса Sourcevine: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("Sourcevine вернул ответ неожиданного формата")
+
+    # Поддерживаем старый и новый форматы ответа.
+    availability = payload.get("availability")
+    if isinstance(availability, dict):
+        status = availability.get("status")
+        if status and status != "available":
+            raise ValueError(f"Видео недоступно: {status}")
+    elif payload.get("available") is False:
+        raise ValueError("Sourcevine сообщает, что видео недоступно")
+
+    if payload.get("success") is False:
+        raise ValueError(
+            f"Sourcevine сообщил об ошибке: {payload.get('error', payload)}"
+        )
+
+    data = payload.get("data")
+    metrics = payload.get("metrics")
+
+    if not isinstance(data, dict):
+        data = {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+
     result = {}
+
     for key in ("views", "likes", "comments", "shares"):
-        value = data.get(key)
+        value = metrics.get(key)
         if value is None:
-            raise ValueError(f"В ответе Sourcevine отсутствует поле {key}")
-        result[key] = max(0, int(value))
+            value = data.get(key)
+
+        if value is None:
+            raise ValueError(
+                f"Sourcevine не вернул показатель {key}. "
+                f"Поля ответа: {list(payload.keys())}"
+            )
+
+        try:
+            value = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Некорректное значение {key}: {value!r}"
+            ) from exc
+
+        if value < 0:
+            raise ValueError(f"Отрицательное значение {key}")
+
+        result[key] = value
+
     return result
 
 def calculate_status(row, cfg):
