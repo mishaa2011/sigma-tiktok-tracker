@@ -1,0 +1,19 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ cfg.site_name }}</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><header class="top"><a class="brand" href="/">{{ cfg.site_name }}</a><a class="admin-link" href="/admin">Панель</a></header>
+<main class="wrap"><section class="hero"><div class="eyebrow">WEEKLY VIDEO TRACKER</div><h1>Собирай просмотры.<br><span>Следи за результатом.</span></h1><p class="muted">Период недели: {{ week }} — по московскому времени.</p>
+<div class="card form-card"><h2>Отправить видео</h2>
+{% if message %}<div class="notice success">{{ message }}</div>{% endif %}{% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+{% if open_now %}
+<form method="post" action="/submit">
+<label>Ник в Telegram<input name="telegram_nick" placeholder="@yourtelegram" required maxlength="80"></label>
+<label>Ник в TikTok<input name="tiktok_nick" placeholder="@yourtiktok" required maxlength="80"></label>
+<label>Ссылка на видео TikTok<div class="url-row"><input id="videoUrl" name="url" type="url" placeholder="https://www.tiktok.com/@.../video/..." required><button class="secondary" type="button" onclick="pasteLink()">Вставить</button></div></label>
+<button class="primary" type="submit">Отправить ссылку <span>↗</span></button>
+</form>
+{% else %}<div class="notice warning">Приём ссылок сейчас закрыт. Проверь расписание следующей недели.</div>{% endif %}
+<p class="fine">Повторная отправка одной и той же ссылки запрещена. Ссылка проверяется после окончания недели.</p></div></section>
+<section class="features"><div class="feature"><b>01 / Недельный цикл</b><p>Новая неделя начинается в понедельник по МСК.</p></div><div class="feature"><b>02 / Проверка</b><p>Статистика и признаки аномалий — после подключения источника данных.</p></div><div class="feature"><b>03 / История</b><p>Результаты сохраняются в архиве администратора.</p></div></section>
+<footer>Статистика TikTok доступна только при работающем и разрешённом источнике данных.</footer></main>
+<script>
+async function pasteLink(){const input=document.getElementById('videoUrl');try{input.value=await navigator.clipboard.readText();}catch(e){input.focus();alert('Разреши доступ к буферу обмена или вставь ссылку сочетанием Ctrl+V.');}}
+</script></body></html>

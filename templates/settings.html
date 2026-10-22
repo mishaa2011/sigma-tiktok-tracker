@@ -1,0 +1,9 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Настройки</title><link rel="stylesheet" href="/static/style.css"></head><body><header class="top"><a class="brand" href="/admin">{{ cfg.site_name }} <small>/ SETTINGS</small></a><a href="/admin">← К результатам</a></header><main class="wrap narrow"><div class="card"><div class="eyebrow">SITE CONFIGURATION</div><h1>Настройки сайта</h1>{% if saved %}<div class="notice success">Настройки сохранены.</div>{% endif %}
+<form method="post" action="/admin/settings">
+<label>Название сайта<input name="site_name" value="{{cfg.site_name}}" required maxlength="100"></label>
+<div class="grid2"><label>Минимум просмотров<input type="number" name="min_views" min="0" value="{{cfg.min_views}}" required></label><label>Максимум просмотров<input type="number" name="max_views" min="0" value="{{cfg.max_views}}" required></label></div>
+<label>Ставка за 1 000 просмотров, USD<input type="number" name="usd_per_1000" min="0" step="0.01" value="{{cfg.usd_per_1000}}" required></label>
+<label>Публичный домен / адрес сайта<input name="public_domain" value="{{cfg.public_domain}}" placeholder="https://example.com"></label>
+<label>Приём ссылок<select name="submission_enabled"><option value="1" {% if cfg.submission_enabled == "1" %}selected{% endif %}>Разрешён по расписанию</option><option value="0" {% if cfg.submission_enabled != "1" %}selected{% endif %}>Выключен вручную</option></select></label>
+<button class="primary" type="submit">Сохранить изменения</button></form>
+<p class="fine">Настройка домена здесь только сохраняет адрес. Для настоящего домена нужно купить его и настроить DNS/HTTPS у хостинга.</p></div></main></body></html>
